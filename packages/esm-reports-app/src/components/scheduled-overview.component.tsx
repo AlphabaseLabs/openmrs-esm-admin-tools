@@ -12,17 +12,11 @@ import {
   TableHeader,
   TableRow,
 } from '@carbon/react';
-import {
-  isDesktop,
-  PageHeader,
-  PageHeaderContent,
-  ReportsPictogram,
-  useLayoutType,
-  usePagination,
-} from '@openmrs/esm-framework';
+import { isDesktop, PageHeader, PageHeaderContent, useLayoutType, usePagination } from '@openmrs/esm-framework';
 import { useScheduledReports } from './reports.resource';
 import Overlay from './overlay.component';
 import ScheduledOverviewCellContent from './scheduled-overview-cell-content.component';
+import ReportsPictogram from './reports-pictogram.component';
 import { DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZES } from './pagination-constants';
 import styles from './reports.scss';
 

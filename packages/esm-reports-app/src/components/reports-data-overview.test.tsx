@@ -14,7 +14,6 @@ vi.mock('@openmrs/esm-framework', () => ({
       <h1>{title}</h1>
     </div>
   )),
-  ReportsPictogram: vi.fn(() => <svg data-testid="reports-pictogram" />),
   showSnackbar: vi.fn(),
   getCoreTranslation: vi.fn((key: string) => key),
   useConfig: vi.fn(),
@@ -72,8 +71,6 @@ describe('ReportsDataOverviewComponent', () => {
     renderComponent();
 
     expect(screen.getByRole('heading', { name: 'Reports' })).toBeInTheDocument();
-    expect(screen.getByTestId('reports-pictogram')).toBeInTheDocument();
-
     fireEvent.change(screen.getByRole('combobox'), { target: { value: 'report-uuid' } });
     fireEvent.click(screen.getByRole('button', { name: 'Fetch Report' }));
 

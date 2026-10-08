@@ -23,7 +23,6 @@ vi.mock('@openmrs/esm-framework', () => ({
       <h1>{title}</h1>
     </div>
   )),
-  ReportsPictogram: vi.fn(() => <svg data-testid="reports-pictogram" />),
   navigate: vi.fn(),
   showModal: vi.fn(),
   getGlobalStore: vi.fn(() => ({
@@ -73,7 +72,6 @@ describe('OverviewComponent', () => {
     });
 
     expect(screen.getByRole('heading', { name: 'Reports' })).toBeInTheDocument();
-    expect(screen.getByTestId('reports-pictogram')).toBeInTheDocument();
 
     const expectedColumnHeaders = [
       /report name/i,

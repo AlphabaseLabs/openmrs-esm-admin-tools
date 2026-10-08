@@ -30,6 +30,7 @@ const RunReportForm: React.FC<RunReportForm> = ({ closePanel }) => {
       'java.lang.String',
       'java.lang.Integer',
       'org.openmrs.Location',
+      'org.openmrs.Provider',
       'org.openmrs.Concept',
       'org.openmrs.EncounterType',
     ],

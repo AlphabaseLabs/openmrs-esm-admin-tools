@@ -21,7 +21,6 @@ import {
   navigate,
   PageHeader,
   PageHeaderContent,
-  ReportsPictogram,
   showModal,
   showSnackbar,
   useConfig,
@@ -39,6 +38,7 @@ import { DEFAULT_PAGE_NUMBER, DEFAULT_PAGE_SIZE, DEFAULT_PAGE_SIZES } from './pa
 import { PRIVILEGE_SYSTEM_DEVELOPER } from '../constants';
 import styles from './reports.scss';
 import { type ConfigObject } from '../config-schema';
+import ReportsPictogram from './reports-pictogram.component';
 
 const OverviewComponent: React.FC = () => {
   const { t } = useTranslation();

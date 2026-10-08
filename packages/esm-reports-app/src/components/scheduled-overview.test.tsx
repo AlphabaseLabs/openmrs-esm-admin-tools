@@ -15,7 +15,6 @@ vi.mock('@openmrs/esm-framework', () => ({
       <h1>{title}</h1>
     </div>
   )),
-  ReportsPictogram: vi.fn(() => <svg data-testid="reports-pictogram" />),
 }));
 
 vi.mock('./reports.resource', () => ({
@@ -44,7 +43,6 @@ describe('ScheduledOverviewComponent', () => {
     render(<ScheduledOverviewComponent />);
 
     expect(screen.getByRole('heading', { name: 'Scheduled reports' })).toBeInTheDocument();
-    expect(screen.getByTestId('reports-pictogram')).toBeInTheDocument();
     expect(screen.getByText('Patient Identifier Sticker')).toBeInTheDocument();
   });
 });

@@ -15,9 +15,35 @@ The Reports app is available in the app switcher menu under the `Reports` entry.
 
 See the guidance in the [Developer Documentation](https://o3-docs.openmrs.org/docs/frontend-modules/development#installing-dependencies).
 
-This repository uses Yarn.
+This repository uses Yarn. Run the following commands from the repository root.
 
-To run a dev server for this package, run
+This deployment targets OpenMRS Core 10.0.0. Keep the `openmrs` build tooling and
+`@openmrs/esm-framework` development dependencies pinned to 10.0.0, and the Reports
+app's framework peer dependency on `10.x`. Using `next` builds the app against a
+newer module-loading runtime that the deployed shell does not provide.
+
+Install dependencies:
 
 ```bash
-yarn start --sources 'packages/esm-reports-app'
+yarn install
+```
+
+Run the Reports app against the Luqman backend and deployment configuration:
+
+```bash
+yarn start --sources 'packages/esm-reports-app' \
+  --backend http://192.168.18.19 \
+  --config-file ../openmrs-distro-referenceapplication/frontend/config-core-openmrs.json \
+  --importmap https://demo.alphabase.co/emr/importmap.json \
+  --routes https://demo.alphabase.co/emr/routes.registry.json \
+  --open false \
+  --port 8040
+```
+
+Build and package the Reports app for the local distribution:
+
+```bash
+yarn workspace @openmrs/esm-reports-app build && \
+yarn workspace @openmrs/esm-reports-app pack \
+  --out ../openmrs-distro-referenceapplication/frontend/luqman-apps/local-esm-reports-app.tgz
+```

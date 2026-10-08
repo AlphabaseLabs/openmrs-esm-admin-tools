@@ -1,4 +1,6 @@
+import ProviderShareStatusParameter, { isShareStatusParameter } from './provider-share-status-parameter.component';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import ProviderReportParameter, { isProviderParameter } from './provider-report-parameter.component';
 import { isEqual } from 'lodash-es';
 import { DatePicker, DatePickerInput, Select, SelectItem, TextInput, Search } from '@carbon/react';
 import { useLocations } from './reports.resource';
@@ -108,6 +110,18 @@ const ReportParameterInput: React.FC<ReportParameterInputProps> = ({ parameter, 
   }, [value, isValueEqual, parameter]);
 
   const renderParameterElementBasedOnType = () => {
+    if (isShareStatusParameter(parameter)) {
+      return (
+        <ProviderShareStatusParameter name={parameter.name} label={parameter.label} value={value} onChange={onChange} />
+      );
+    }
+
+    if (isProviderParameter(parameter)) {
+      return (
+        <ProviderReportParameter name={parameter.name} label={parameter.label} value={value} onChange={onChange} />
+      );
+    }
+
     switch (parameter.type) {
       case 'java.util.Date':
         return (

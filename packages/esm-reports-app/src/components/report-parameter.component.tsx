@@ -1,4 +1,6 @@
+import ProviderShareStatusParameter, { isShareStatusParameter } from './provider-share-status-parameter.component';
 import React from 'react';
+import ProviderReportParameter, { isProviderParameter } from './provider-report-parameter.component';
 import { useTranslation } from 'react-i18next';
 import { TextInput, Select, SelectItem } from '@carbon/react';
 import { OpenmrsDatePicker } from '@openmrs/esm-framework';
@@ -55,6 +57,28 @@ const ReportParameter: React.FC<ReportParameterProps> = ({
       handleOnChange(syntheticEvent);
     }
   };
+
+  if (isShareStatusParameter(parameter)) {
+    return (
+      <ProviderShareStatusParameter
+        name={parameter.name}
+        label={parameter.label}
+        value={reportParameters[parameter.name]}
+        onChange={(value) => handleConceptSelect(value, '')}
+      />
+    );
+  }
+
+  if (isProviderParameter(parameter)) {
+    return (
+      <ProviderReportParameter
+        name={parameter.name}
+        label={parameter.label}
+        value={reportParameters[parameter.name]}
+        onChange={(uuid) => handleConceptSelect(uuid, '')}
+      />
+    );
+  }
 
   switch (parameter.type) {
     case 'java.util.Date':

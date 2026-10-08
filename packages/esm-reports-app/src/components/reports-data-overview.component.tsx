@@ -2,17 +2,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Select, SelectItem, Button } from '@carbon/react';
 import dayjs from 'dayjs';
-import {
-  getCoreTranslation,
-  PageHeader,
-  PageHeaderContent,
-  ReportsPictogram,
-  showSnackbar,
-  useConfig,
-} from '@openmrs/esm-framework';
+import { getCoreTranslation, PageHeader, PageHeaderContent, showSnackbar, useConfig } from '@openmrs/esm-framework';
 import Overlay from './overlay.component';
 import ReportDataViewer from './report-data-viewer.component';
 import ReportParameter from './report-parameter.component';
+import ReportsPictogram from './reports-pictogram.component';
 import { useReportDefinitions, useReportData, useLocations } from './reports.resource';
 import styles from './reports.scss';
 
