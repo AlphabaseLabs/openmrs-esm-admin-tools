@@ -1,10 +1,11 @@
-import React, { type ChangeEvent, useCallback, useEffect, useState, useMemo } from 'react';
-import classNames from 'classnames';
+import React, { useCallback, useState, useMemo, useRef } from 'react';
+import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
   Checkbox,
   DataTable,
+  InlineNotification,
   Pagination,
   Table,
   TableBody,
@@ -14,8 +15,14 @@ import {
   TableHeader,
   TableRow,
 } from '@carbon/react';
-import { Calendar, Download, Play, Save, TrashCan, View } from '@carbon/react/icons';
-import { downloadMultipleReports, downloadReport, preserveReport, useReports } from './reports.resource';
+import { Calendar, Download, Play, Printer, Renew, Save, TrashCan, View } from '@carbon/react/icons';
+import {
+  downloadMultipleReports,
+  downloadReport,
+  preserveReport,
+  useReports,
+  type ReportModel,
+} from './reports.resource';
 import {
   isDesktop,
   navigate,
@@ -39,18 +46,17 @@ import { PRIVILEGE_SYSTEM_DEVELOPER } from '../constants';
 import styles from './reports.scss';
 import { type ConfigObject } from '../config-schema';
 import ReportsPictogram from './reports-pictogram.component';
+import ReportRequestParameters from './report-request-parameters.component';
+import { downloadReportFile, printReportFile } from '../utils/report-files';
 
 const OverviewComponent: React.FC = () => {
   const { t } = useTranslation();
   const currentSession = useSession();
   const { webPreviewViewReportUrl } = useConfig<ConfigObject>();
 
-  let [checkedReportUuidsArray, setCheckedReportUuidsArray] = useState([]);
-  const [downloadReportButtonVisible, setDownloadReportButtonVisible] = useState(false);
-
-  useEffect(() => {
-    setDownloadReportButtonVisible(checkedReportUuidsArray.length > 0);
-  }, [checkedReportUuidsArray]);
+  const [checkedReportUuidsArray, setCheckedReportUuidsArray] = useState<string[]>([]);
+  const [printingReportUuid, setPrintingReportUuid] = useState<string | null>(null);
+  const printInProgress = useRef(false);
 
   const tableHeaders = useMemo(
     () => [
@@ -68,10 +74,18 @@ const OverviewComponent: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(DEFAULT_PAGE_NUMBER);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
-  const { reports, reportsTotalCount, mutateReports } = useReports(
+  const { reports, reportsTotalCount, mutateReports, error, isValidating } = useReports(
     RAN_REPORT_STATUSES.join(','),
     currentPage,
     pageSize,
+  );
+  const reportsById = useMemo(
+    () => new Map<string, ReportModel>(reports.map((report) => [report.id, report])),
+    [reports],
+  );
+
+  const selectedReportUuids = checkedReportUuidsArray.filter(
+    (uuid) => reportsById.get(uuid) && [COMPLETED, SAVED].includes(reportsById.get(uuid).status),
   );
 
   const layout = useLayoutType();
@@ -105,57 +119,42 @@ const OverviewComponent: React.FC = () => {
   }
 
   function isCurrentUserTheSameAsReportRequestedByUser(reportRequestUuid: string) {
-    const report = reports.find((tableRow) => tableRow.id === reportRequestUuid);
+    const report = reportsById.get(reportRequestUuid);
     const requestedByUserUuid = report?.requestedByUserUuid;
-    const currentUserUuid = currentSession?.user.uuid;
+    const currentUserUuid = currentSession?.user?.uuid;
 
-    return requestedByUserUuid === currentUserUuid;
+    return Boolean(currentUserUuid && requestedByUserUuid === currentUserUuid);
   }
 
   function isSystemDeveloperUser() {
-    return userHasAccess(PRIVILEGE_SYSTEM_DEVELOPER, currentSession.user);
+    return Boolean(currentSession?.user && userHasAccess(PRIVILEGE_SYSTEM_DEVELOPER, currentSession.user));
   }
 
   function isEligibleReportUser(reportRequestUuid: string) {
     return isCurrentUserTheSameAsReportRequestedByUser(reportRequestUuid) || isSystemDeveloperUser();
   }
 
-  function renderRowCheckbox(row, index) {
-    const statusCell = row?.cells.find((cell) => cell.info?.header === 'status');
-    const statusValue = statusCell?.value;
-    if (statusValue === COMPLETED || statusValue === SAVED) {
-      return (
-        <td className={classNames({ [styles.rowCellEven]: index % 2 === 0, [styles.rowCellOdd]: index % 2 !== 0 })}>
+  function renderRowCheckbox(row) {
+    const selectable = [COMPLETED, SAVED].includes(getReportStatus(row));
+    return (
+      <TableCell>
+        {selectable && (
           <Checkbox
             id={`checkbox-${row.id}`}
-            labelText=""
-            onChange={(e: ChangeEvent<HTMLInputElement>) => handleOnCheckboxClick(e)}
-            checked={checkedReportUuidsArray.includes(row.id)}
+            labelText={t('selectReportForDownload', 'Select report for download')}
+            hideLabel
+            onChange={(_, { checked }) =>
+              setCheckedReportUuidsArray((selected) =>
+                checked
+                  ? [...selected.filter((uuid) => uuid !== row.id), row.id]
+                  : selected.filter((uuid) => uuid !== row.id),
+              )
+            }
+            checked={selectedReportUuids.includes(row.id)}
           />
-        </td>
-      );
-    } else {
-      return (
-        <td
-          className={classNames({ [styles.rowCellEven]: index % 2 === 0, [styles.rowCellOdd]: index % 2 !== 0 })}
-        ></td>
-      );
-    }
-  }
-
-  function handleOnCheckboxClick(event) {
-    const checkboxElement = event?.target;
-    const checkboxId = checkboxElement.id;
-    const reportUuid = checkboxId.slice(checkboxId.indexOf('-') + 1);
-    const isChecked = checkboxElement?.checked;
-
-    setCheckedReportUuidsArray((prevState) => {
-      if (isChecked && !prevState.includes(reportUuid)) {
-        return [...prevState, reportUuid];
-      } else {
-        return prevState.filter((checkedReportUuid) => checkedReportUuid !== reportUuid);
-      }
-    });
+        )}
+      </TableCell>
+    );
   }
 
   const handlePreserveReport = useCallback(
@@ -233,7 +232,7 @@ const OverviewComponent: React.FC = () => {
     async (reportRequestUuid: string) => {
       try {
         const response = await downloadReport(reportRequestUuid);
-        processAndDownloadFile(response);
+        downloadReportFile(response);
         clearReportCheckboxes();
         showSnackbar({
           kind: 'success',
@@ -252,10 +251,10 @@ const OverviewComponent: React.FC = () => {
   );
 
   const handleDownloadMultipleReports = useCallback(
-    async (reportRequestUuids) => {
+    async (reportRequestUuids: string[]) => {
       try {
         const response = await downloadMultipleReports(reportRequestUuids);
-        response.forEach((file) => processAndDownloadFile(file));
+        response.forEach(downloadReportFile);
         clearReportCheckboxes();
         showSnackbar({
           kind: 'success',
@@ -273,19 +272,35 @@ const OverviewComponent: React.FC = () => {
     [t],
   );
 
-  const processAndDownloadFile = (file) => {
-    const decodedData = window.atob(file.fileContent);
-    const byteArray = new Uint8Array(decodedData.length);
-    for (let i = 0; i < decodedData.length; i++) {
-      byteArray[i] = decodedData.charCodeAt(i);
+  const handlePrintReport = async (reportRequestUuid: string) => {
+    if (printInProgress.current) return;
+    printInProgress.current = true;
+    setPrintingReportUuid(reportRequestUuid);
+    try {
+      await printReportFile(
+        () => downloadReport(reportRequestUuid),
+        {
+          loading: t('preparingReportToPrint', 'Preparing report to print…'),
+          popupBlocked: t('reportPrintPopupBlocked', 'Allow pop-ups for this site, then try printing again.'),
+          invalidPdf: t('reportPrintPdfOnly', 'Only PDF reports can be printed. Download this report instead.'),
+        },
+        () =>
+          showSnackbar({
+            kind: 'info',
+            title: t('printReport', 'Print report'),
+            subtitle: t('reportPrintManually', 'Use the print button in the PDF tab to print this report.'),
+          }),
+      );
+    } catch (error) {
+      showSnackbar({
+        kind: 'error',
+        title: t('errorPrintingReport', 'Unable to print report'),
+        subtitle: error instanceof Error ? error.message : t('reportPrintRetry', 'Please try again.'),
+      });
+    } finally {
+      printInProgress.current = false;
+      setPrintingReportUuid(null);
     }
-    const url = window.URL.createObjectURL(new Blob([byteArray]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', file.filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const clearReportCheckboxes = () => {
@@ -302,16 +317,24 @@ const OverviewComponent: React.FC = () => {
           <div className={styles.mainActionButtonsDiv}>
             <Button
               kind="ghost"
-              renderIcon={() => <Download size={16} className={styles.actionButtonIcon} />}
-              iconDescription="Download reports"
-              onClick={() => handleDownloadMultipleReports(checkedReportUuidsArray.join(','))}
-              className={classNames(styles.mainActionButton, {
-                [styles.downloadReportsVisible]: downloadReportButtonVisible,
-                [styles.downloadReportsHidden]: !downloadReportButtonVisible,
-              })}
-            >
-              {t('downloadReports', 'Download reports')}
-            </Button>
+              size="sm"
+              hasIconOnly
+              renderIcon={Renew}
+              iconDescription={t('refreshReports', 'Refresh reports')}
+              disabled={isValidating}
+              onClick={() => mutateReports()}
+            />
+            {selectedReportUuids.length > 0 && (
+              <Button
+                kind="ghost"
+                renderIcon={() => <Download size={16} className={styles.actionButtonIcon} />}
+                iconDescription="Download reports"
+                onClick={() => handleDownloadMultipleReports(selectedReportUuids)}
+                className={styles.mainActionButton}
+              >
+                {t('downloadReports', 'Download reports')}
+              </Button>
+            )}
             <Button
               kind="ghost"
               renderIcon={() => <Play size={16} className={styles.actionButtonIcon} />}
@@ -331,7 +354,6 @@ const OverviewComponent: React.FC = () => {
             >
               {t('runReports', 'Run reports')}
             </Button>
-            <Overlay />
             <Button
               className={styles.mainActionButton}
               iconDescription="Report schedule"
@@ -343,47 +365,53 @@ const OverviewComponent: React.FC = () => {
             </Button>
             <Button
               className={styles.mainActionButton}
-              iconDescription="Report schedule"
+              iconDescription={t('viewReports', 'Reports Webview')}
               kind="ghost"
               onClick={() => navigate({ to: `\${openmrsSpaBase}/reports/reports-data-overview` })}
-              renderIcon={() => <Calendar size={16} className={styles.actionButtonIcon} />}
+              renderIcon={View}
             >
               {t('viewReports', 'Reports Webview')}
             </Button>
           </div>
         </div>
-        <DataTable rows={reports} headers={tableHeaders} isSortable>
+        {error && (
+          <InlineNotification
+            kind="error"
+            lowContrast
+            hideCloseButton
+            title={t('errorFetchingReports', 'Unable to load reports')}
+            subtitle={t('refreshReportsToRetry', 'Refresh to try again.')}
+          />
+        )}
+        <DataTable rows={reports} headers={tableHeaders}>
           {({ rows, headers }) => (
-            <TableContainer>
-              <Table>
+            <TableContainer className={styles.requestsTableContainer}>
+              <Table className={styles.requestsTable} useZebraStyles>
                 <TableHead>
                   <TableRow>
                     <th></th>
                     {headers.map((header) => (
-                      <TableHeader key={header.key}>{header.header}</TableHeader>
+                      <TableHeader key={header.key} className={styles[`${header.key}Column`]}>
+                        {header.header}
+                      </TableHeader>
                     ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {rows.map((row, index) => (
-                    <TableRow className={styles.tableRow} key={index}>
-                      {renderRowCheckbox(row, index)}
+                  {rows.map((row) => (
+                    <TableRow key={row.id}>
+                      {renderRowCheckbox(row)}
                       {row.cells.map((cell) => (
-                        <TableCell
-                          key={cell.id}
-                          className={classNames({
-                            [styles.rowCellEven]: index % 2 === 0,
-                            [styles.rowCellOdd]: index % 2 !== 0,
-                          })}
-                        >
+                        <TableCell key={cell.id} className={styles[`${cell.info.header}Column`]}>
                           {cell.info.header === 'actions' ? (
-                            <div className={styles.actionsContainer}>
+                            <div className={styles.reportActions}>
                               <ReportOverviewButton
                                 icon={() => <View size={16} className={styles.actionButtonIcon} />}
                                 label={t('view', 'View')}
                                 onClick={() => handleViewReport(row.id)}
                                 reportRequestUuid={row.id}
                                 shouldBeDisplayed={shouldShowViewButton(row)}
+                                iconOnly
                               />
                               <ReportOverviewButton
                                 icon={() => <Download size={16} className={styles.actionButtonIcon} />}
@@ -391,6 +419,22 @@ const OverviewComponent: React.FC = () => {
                                 onClick={() => handleDownloadReport(row.id)}
                                 reportRequestUuid={row.id}
                                 shouldBeDisplayed={shouldShowDownloadButton(row)}
+                                iconOnly
+                              />
+                              <ReportOverviewButton
+                                icon={Printer}
+                                label={
+                                  printingReportUuid === row.id
+                                    ? t('preparingReportToPrint', 'Preparing report to print…')
+                                    : t('printReport', 'Print report')
+                                }
+                                onClick={() => handlePrintReport(row.id)}
+                                reportRequestUuid={row.id}
+                                shouldBeDisplayed={
+                                  shouldShowDownloadButton(row) && /^pdf$/i.test(getReportOutputFormat(row)?.trim())
+                                }
+                                disabled={printingReportUuid !== null}
+                                iconOnly
                               />
                               <ReportOverviewButton
                                 icon={() => <Save size={16} className={styles.actionButtonIcon} />}
@@ -398,6 +442,7 @@ const OverviewComponent: React.FC = () => {
                                 onClick={() => handlePreserveReport(row.id)}
                                 reportRequestUuid={row.id}
                                 shouldBeDisplayed={getReportStatus(row) === COMPLETED && isEligibleReportUser(row.id)}
+                                iconOnly
                               />
                               <ReportOverviewButton
                                 icon={() => <TrashCan size={16} className={styles.actionButtonIcon} />}
@@ -405,14 +450,25 @@ const OverviewComponent: React.FC = () => {
                                 onClick={() => launchDeleteReportDialog(row.id)}
                                 reportRequestUuid={row.id}
                                 shouldBeDisplayed={isEligibleReportUser(row.id)}
+                                iconOnly
                               />
                             </div>
                           ) : cell.info.header === 'status' ? (
-                            <div>
+                            <div className={styles.requestStatus}>
                               <ReportStatus status={cell.value} />
                             </div>
                           ) : cell.info.header === 'reportName' ? (
                             <div>{cell.value?.content ?? cell.value}</div>
+                          ) : cell.info.header === 'parameters' ? (
+                            <ReportRequestParameters
+                              parameters={Array.isArray(cell.value) ? cell.value : undefined}
+                              fallback={Array.isArray(cell.value) ? undefined : cell.value?.content ?? cell.value}
+                            />
+                          ) : cell.info.header === 'requestedOn' && dayjs(cell.value).isValid() ? (
+                            <time dateTime={dayjs(cell.value).format()}>
+                              {dayjs(cell.value).format('DD-MMM-YYYY')}
+                              <span className={styles.requestTime}>{dayjs(cell.value).format('HH:mm')}</span>
+                            </time>
                           ) : (
                             cell.value?.content ?? cell.value
                           )}
@@ -420,6 +476,17 @@ const OverviewComponent: React.FC = () => {
                       ))}
                     </TableRow>
                   ))}
+                  {rows.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={tableHeaders.length + 1} className={styles.emptyTableMessage}>
+                        {isValidating
+                          ? t('loadingReports', 'Loading reports…')
+                          : error
+                            ? t('refreshReportsToRetry', 'Refresh to try again.')
+                            : t('noReports', 'No reports yet. Run a report to get started.')}
+                      </TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>
@@ -433,6 +500,7 @@ const OverviewComponent: React.FC = () => {
               if (newPageSize !== pageSize) {
                 setPageSize(newPageSize);
               }
+              setCheckedReportUuidsArray([]);
 
               if (newPage !== currentPage) {
                 setCurrentPage(newPage);
@@ -446,6 +514,7 @@ const OverviewComponent: React.FC = () => {
           />
         ) : null}
       </div>
+      <Overlay />
     </div>
   );
 };

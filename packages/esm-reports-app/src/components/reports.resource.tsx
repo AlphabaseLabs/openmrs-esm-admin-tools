@@ -5,20 +5,28 @@ import { type ReportDefinition } from '../types/report-definition';
 import { type ReportDesign } from '../types/report-design';
 import { type ReportRequest } from '../types/report-request';
 import { useTranslation } from 'react-i18next';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { type ReportFile } from '../utils/report-files';
 import { PROCESSING_REPORT_STATUSES } from './report-statuses-constants';
 
-interface ReportModel {
+export interface ReportModel {
   reportName: string;
   status: string;
   requestedBy: string;
   requestedByUserUuid: string;
   requestedOn: string;
   outputFormat: string;
-  parameters: any;
+  parameters: ReportParameterValue[];
   id: string;
   evaluateCompleteDatetime: string;
   schedule: string;
+}
+
+export interface ReportParameterValue {
+  name: string;
+  label: string;
+  type: string;
+  value: unknown;
 }
 
 interface ScheduledReportModel {
@@ -60,7 +68,7 @@ export function useReports(statuses: string, pageNumber: number, pageSize: numbe
 
   const reports = data?.data?.results;
   const totalCount = data?.data?.totalCount;
-  const reportsArray: Array<any> = reports ? [].concat(...reports.map((report) => mapReportResults(report))) : [];
+  const reportsArray = useMemo(() => reports?.map(mapReportResults) ?? [], [reports]);
 
   return {
     reports: reportsArray,
@@ -169,15 +177,15 @@ export async function preserveReport(reportRequestUuid: string) {
 export async function downloadReport(reportRequestUuid: string) {
   const apiUrl = `/ws/rest/v1/reportingrest/downloadReport?reportRequestUuid=${reportRequestUuid}`;
 
-  const { data } = await openmrsFetch<any>(apiUrl);
+  const { data } = await openmrsFetch<ReportFile>(apiUrl);
 
   return data;
 }
 
 export async function downloadMultipleReports(reportRequestUuids: string[]) {
-  const apiUrl = `/ws/rest/v1/reportingrest/downloadMultipleReports?reportRequestUuids=${reportRequestUuids}`;
+  const apiUrl = `/ws/rest/v1/reportingrest/downloadMultipleReports?reportRequestUuids=${encodeURIComponent(reportRequestUuids.join(','))}`;
 
-  const { data } = await openmrsFetch(apiUrl);
+  const { data } = await openmrsFetch<ReportFile[]>(apiUrl);
 
   return data;
 }
@@ -191,7 +199,12 @@ function mapReportResults(data): ReportModel {
     requestedByUserUuid: data.requestedBy.uuid,
     requestedOn: dayjs(data.requestDate).format('YYYY-MM-DD HH:mm'),
     outputFormat: data.renderingMode.label,
-    parameters: convertParametersToString(data),
+    parameters: (data.parameterizable.parameters ?? []).map((parameter) => ({
+      name: parameter.name,
+      label: parameter.label,
+      type: parameter.type,
+      value: data.parameterMappings?.[parameter.name],
+    })),
     evaluateCompleteDatetime: data.evaluateCompleteDatetime
       ? dayjs(data.evaluateCompleteDatetime).format('YYYY-MM-DD HH:mm')
       : undefined,
@@ -206,30 +219,6 @@ function mapScheduledReportResults(data: any): ScheduledReportModel {
     name: data.reportDefinition.display,
     schedule: data.scheduledRequests?.[0]?.schedule,
   };
-}
-
-function convertParametersToString(data: any): string {
-  let finalString = '';
-  const parameters = data.parameterizable.parameters;
-  if (parameters.length > 0) {
-    parameters.forEach((parameter) => {
-      let value = data.parameterMappings[parameter.name];
-      if (parameter.type === 'java.util.Date') {
-        value = dayjs(value).format('YYYY-MM-DD');
-      } else if (parameter.type === 'org.openmrs.Location') {
-        value = value?.display;
-      }
-      finalString = finalString + parameter.label + ': ' + value + ', ';
-    });
-
-    finalString = finalString.trim();
-
-    if (finalString.charAt(finalString.length - 1) === ',') {
-      finalString = finalString.slice(0, -1);
-    }
-  }
-
-  return finalString;
 }
 
 export function useReportData(reportUuid: string, parameters: Record<string, string>) {

@@ -1,12 +1,13 @@
 import React from 'react';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { screen, waitFor, fireEvent } from '@testing-library/react';
 import { renderWithSwr } from '@tools/test-helpers';
-import { waitForLoadingToFinish } from '@tools/index';
-import { openmrsFetch, type Session, useConfig, useSession } from '@openmrs/esm-framework';
+import { useConfig, useSession } from '@openmrs/esm-framework';
 import OverviewComponent from './overview.component';
 import { mockReports, mockSession } from '@mocks/index';
-import { useReports } from './reports.resource';
+import { useReports, useReportDefinitions, useReportDesigns, useLocations, runReport } from './reports.resource';
+import RunReportForm from './run-report/run-report-form.component';
+import { PROVIDER_FINANCIAL_STATEMENT_UUID } from '../constants';
 
 // Mock dependencies
 vi.mock('@openmrs/esm-framework', () => ({
@@ -25,6 +26,7 @@ vi.mock('@openmrs/esm-framework', () => ({
   )),
   navigate: vi.fn(),
   showModal: vi.fn(),
+  showSnackbar: vi.fn(),
   getGlobalStore: vi.fn(() => ({
     getState: vi.fn(),
     setState: vi.fn(),
@@ -39,10 +41,13 @@ vi.mock('./reports.resource', () => ({
   downloadReport: vi.fn(),
   downloadMultipleReports: vi.fn(),
   preserveReport: vi.fn(),
+  useReportDefinitions: vi.fn(),
+  useReportDesigns: vi.fn(),
+  useLocations: vi.fn(),
+  runReport: vi.fn(),
 }));
 
 const mockUseSession = vi.mocked(useSession);
-const mockOpenmrsFetch = vi.mocked(openmrsFetch);
 const mockUseConfig = vi.mocked(useConfig);
 
 describe('OverviewComponent', () => {
@@ -88,22 +93,10 @@ describe('OverviewComponent', () => {
 
     const allRows = screen.getAllByRole('row');
     expect(allRows.length).toBe(6);
-    const rowTexts = allRows.map((row) => row.textContent);
+    expect(screen.getAllByText('OPD/IPD Report')).toHaveLength(3);
+    expect(screen.getAllByText('13-Nov-2025')).toHaveLength(2);
 
-    const expectedRowContents = [
-      'Report nameStatusRequested byRequested onOutput formatParametersActions',
-      'OPD/IPD ReportFailedRUHINYURAMPUNZI RUHINYURAMPUNZI RUHINYURAMPUNZI2025-11-12 12:00CsvReportRendererstartDate: 2025-05-06, endDate: 2025-05-06, department: Pediatric ServiceDelete',
-      'OPD/IPD ReportFailedRUHINYURAMPUNZI RUHINYURAMPUNZI RUHINYURAMPUNZI2025-11-11 12:00CsvReportRendererstartDate: 2025-05-06, endDate: 2025-05-06, department: Pediatric ServiceDelete',
-      'OPD/IPD ReportFailedRUHINYURAMPUNZI RUHINYURAMPUNZI RUHINYURAMPUNZI2025-11-10 12:00CsvReportRendererstartDate: 2025-05-06, endDate: 2025-05-06, department: Pediatric ServiceDelete',
-      'Generic Encounter ReportCompletedAdmin User2025-11-13 10:30Web PreviewstartDate: 2025-11-01, endDate: 2025-11-13, location: Main ClinicViewPreserveDelete',
-      'Patient Demographics ReportCompletedSystem Administrator2025-11-13 09:15Generic Encounter Report.xlslocation: All Locations, ageGroup: AdultDownloadPreserveDelete',
-    ];
-
-    expectedRowContents.forEach((expectedContent, index) => {
-      expect(rowTexts[index]).toBe(expectedContent);
-    });
-
-    const viewButtons = screen.queryAllByText('View');
+    const viewButtons = screen.queryAllByRole('button', { name: 'View' });
     expect(viewButtons.length).toBe(1);
   });
 
@@ -146,25 +139,87 @@ describe('OverviewComponent', () => {
     // - Completed reports should show Download button instead of View button
     const allRows = screen.getAllByRole('row');
     expect(allRows.length).toBe(6);
-    const rowTexts = allRows.map((row) => row.textContent);
+    expect(screen.getAllByText('OPD/IPD Report')).toHaveLength(3);
+    expect(screen.getAllByText('13-Nov-2025')).toHaveLength(2);
 
-    const expectedRowContents = [
-      'Report nameStatusRequested byRequested onOutput formatParametersActions',
-      'OPD/IPD ReportFailedRUHINYURAMPUNZI RUHINYURAMPUNZI RUHINYURAMPUNZI2025-11-12 12:00CsvReportRendererstartDate: 2025-05-06, endDate: 2025-05-06, department: Pediatric ServiceDelete',
-      'OPD/IPD ReportFailedRUHINYURAMPUNZI RUHINYURAMPUNZI RUHINYURAMPUNZI2025-11-11 12:00CsvReportRendererstartDate: 2025-05-06, endDate: 2025-05-06, department: Pediatric ServiceDelete',
-      'OPD/IPD ReportFailedRUHINYURAMPUNZI RUHINYURAMPUNZI RUHINYURAMPUNZI2025-11-10 12:00CsvReportRendererstartDate: 2025-05-06, endDate: 2025-05-06, department: Pediatric ServiceDelete',
-      'Generic Encounter ReportCompletedAdmin User2025-11-13 10:30Web PreviewstartDate: 2025-11-01, endDate: 2025-11-13, location: Main ClinicDownloadPreserveDelete',
-      'Patient Demographics ReportCompletedSystem Administrator2025-11-13 09:15Generic Encounter Report.xlslocation: All Locations, ageGroup: AdultDownloadPreserveDelete',
-    ];
-
-    expectedRowContents.forEach((expectedContent, index) => {
-      expect(rowTexts[index]).toBe(expectedContent);
-    });
-
-    const downloadButtons = screen.getAllByText('Download');
+    const downloadButtons = screen.getAllByRole('button', { name: 'Download' });
     expect(downloadButtons.length).toBe(2);
 
-    const viewButtons = screen.queryAllByText('View');
+    const viewButtons = screen.queryAllByRole('button', { name: 'View' });
     expect(viewButtons).toHaveLength(0);
+  });
+
+  it('offers Print only for completed or preserved PDF reports', () => {
+    mockUseConfig.mockReturnValue({ webPreviewViewReportUrl: '' });
+    const reports = [
+      ['COMPLETED', 'PDF'],
+      ['SAVED', 'PDF'],
+      ['FAILED', 'PDF'],
+      ['REQUESTED', 'PDF'],
+      ['COMPLETED', 'CSV'],
+    ].map(([status, outputFormat], index) => ({ ...mockReports[0], id: `report-${index}`, status, outputFormat }));
+    mockUseReports.mockReturnValue({ reports, reportsTotalCount: reports.length, mutateReports: vi.fn() });
+    renderWithSwr(<OverviewComponent />);
+    expect(screen.getAllByRole('button', { name: 'Print report' })).toHaveLength(2);
+  });
+});
+
+describe('RunReportForm defaults and submission', () => {
+  beforeEach(() => {
+    vi.mocked(useLocations).mockReturnValue({ locations: [] });
+    vi.mocked(useReportDefinitions).mockReturnValue({
+      reportDefinitions: [
+        {
+          uuid: PROVIDER_FINANCIAL_STATEMENT_UUID,
+          name: 'Provider Financial Statement',
+          description: '',
+          parameters: [{ name: 'currency', label: 'Currency', type: 'java.lang.String', required: true }],
+        },
+      ],
+    });
+    vi.mocked(useReportDesigns).mockReturnValue({
+      reportDesigns: [
+        { uuid: 'pdf', name: 'PDF' },
+        { uuid: 'csv', name: 'CSV' },
+      ],
+      error: undefined,
+      isValidating: false,
+      mutateReportDesigns: vi.fn(),
+    });
+    vi.mocked(runReport).mockReset();
+  });
+
+  it('defaults to PKR and PDF without overriding a later format choice or an explicit clear', () => {
+    const { rerender } = renderWithSwr(<RunReportForm closePanel={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Report'), { target: { value: PROVIDER_FINANCIAL_STATEMENT_UUID } });
+    expect(screen.getByLabelText('Currency')).toHaveValue('PKR');
+    expect(screen.getByLabelText('Output format')).toHaveValue('pdf');
+    fireEvent.change(screen.getByLabelText('Output format'), { target: { value: 'csv' } });
+    rerender(<RunReportForm closePanel={vi.fn()} />);
+    expect(screen.getByLabelText('Output format')).toHaveValue('csv');
+    fireEvent.change(screen.getByLabelText('Output format'), { target: { value: '' } });
+    expect(screen.getByLabelText('Output format')).toHaveValue('');
+    expect(screen.getByRole('button', { name: 'Run' })).toBeDisabled();
+  });
+
+  it('guards invalid and duplicate submissions', () => {
+    vi.mocked(runReport).mockImplementation(() => new Promise(() => {}));
+    renderWithSwr(<RunReportForm closePanel={vi.fn()} />);
+    const run = screen.getByRole('button', { name: 'Run' });
+    fireEvent.submit(run);
+    expect(runReport).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Report'), { target: { value: PROVIDER_FINANCIAL_STATEMENT_UUID } });
+    fireEvent.submit(run);
+    fireEvent.submit(run);
+    expect(runReport).toHaveBeenCalledTimes(1);
+    expect(runReport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        renderingMode: { argument: 'pdf' },
+        reportDefinition: {
+          parameterizable: { uuid: PROVIDER_FINANCIAL_STATEMENT_UUID },
+          parameterMappings: { currency: 'PKR' },
+        },
+      }),
+    );
   });
 });

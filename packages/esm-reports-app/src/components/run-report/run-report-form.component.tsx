@@ -1,12 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, ButtonSet, Form, Select, SelectItem, Stack } from '@carbon/react';
 import classNames from 'classnames';
 import { useTranslation } from 'react-i18next';
 import { showSnackbar, useLayoutType } from '@openmrs/esm-framework';
 import ReportParameter from '../report-parameter.component';
-import { closeOverlay } from '../../hooks/useOverlay';
+import { PROVIDER_FINANCIAL_STATEMENT_UUID } from '../../constants';
 import { useLocations, useReportDefinitions, useReportDesigns, runReport } from '../reports.resource';
 import styles from './run-report-form.scss';
+
+const supportedParameterTypes = [
+  'java.util.Date',
+  'java.lang.String',
+  'java.lang.Integer',
+  'org.openmrs.Location',
+  'org.openmrs.Provider',
+  'org.openmrs.Concept',
+];
 
 interface RunReportForm {
   closePanel: () => void;
@@ -15,57 +24,43 @@ interface RunReportForm {
 const RunReportForm: React.FC<RunReportForm> = ({ closePanel }) => {
   const { t } = useTranslation();
   const [reportUuid, setReportUuid] = useState('');
-  const [renderModeUuid, setRenderModeUuid] = useState('');
-  const [currentReport, setCurrentReport] = useState(null);
+  const [selectedRenderModeUuid, setRenderModeUuid] = useState<string | null>(null);
   const [reportParameters, setReportParameters] = useState({});
-  const [isFormValid, setIsFormValid] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isTablet = useLayoutType() === 'tablet';
 
-  const { reportDesigns, mutateReportDesigns } = useReportDesigns(reportUuid);
-
-  const supportedParameterTypes = useMemo(
-    () => [
-      'java.util.Date',
-      'java.lang.String',
-      'java.lang.Integer',
-      'org.openmrs.Location',
-      'org.openmrs.Provider',
-      'org.openmrs.Concept',
-      'org.openmrs.EncounterType',
-    ],
-    [],
-  );
-
-  useEffect(() => {
-    mutateReportDesigns();
-  }, [mutateReportDesigns, reportUuid]);
-
-  useEffect(() => {
-    const paramTypes = currentReport?.parameters.map((param) => param.type);
-
-    const isAnyNotSupportedType =
-      paramTypes?.some((paramType) => !supportedParameterTypes.includes(paramType)) ?? false;
-    const allRequiredParametersValid =
-      currentReport?.parameters?.every((parameter) => {
-        if (!parameter.required) {
-          return true;
-        }
-
-        const paramValue = reportParameters[parameter.name];
-        const isValid = !!paramValue && paramValue !== 'Invalid Date' && paramValue !== '';
-        return isValid;
-      }) ?? true;
-
-    if (!isAnyNotSupportedType && allRequiredParametersValid && reportUuid !== '' && renderModeUuid !== '') {
-      setIsFormValid(true);
-    } else {
-      setIsFormValid(false);
-    }
-  }, [reportParameters, reportUuid, renderModeUuid, currentReport?.parameters, supportedParameterTypes]);
-
+  const { reportDesigns } = useReportDesigns(reportUuid);
   const { reportDefinitions } = useReportDefinitions();
   const { locations } = useLocations();
+  const currentReport = reportDefinitions?.find((report) => report.uuid === reportUuid);
+  const defaultDesign =
+    reportUuid === PROVIDER_FINANCIAL_STATEMENT_UUID
+      ? reportDesigns?.find((design) => design.name.trim().toUpperCase() === 'PDF')?.uuid
+      : undefined;
+  // Null means untouched; an explicit choice (including clearing the field) wins over the default.
+  const renderModeUuid = selectedRenderModeUuid ?? defaultDesign ?? '';
+  const isFormValid = Boolean(
+    currentReport &&
+      reportDesigns?.some((design) => design.uuid === renderModeUuid) &&
+      currentReport.parameters?.every((parameter) => {
+        if (!supportedParameterTypes.includes(parameter.type)) return false;
+        const value = reportParameters[parameter.name];
+        const empty = value == null || (typeof value === 'string' && value.trim() === '');
+        if (empty) return !parameter.required;
+        return parameter.type !== 'java.util.Date' || (value instanceof Date && Number.isFinite(value.getTime()));
+      }),
+  );
+  const submitting = useRef(false);
+  const mounted = useRef(true);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      clearTimeout(closeTimer.current);
+    };
+  }, []);
 
   function handleOnChange(event) {
     const key = event.target.name;
@@ -86,7 +81,8 @@ const RunReportForm: React.FC<RunReportForm> = ({ closePanel }) => {
   const handleSubmit = useCallback(
     (event) => {
       event.preventDefault();
-
+      if (!isFormValid || submitting.current) return;
+      submitting.current = true;
       setIsSubmitting(true);
 
       const reportRequest = {
@@ -105,18 +101,21 @@ const RunReportForm: React.FC<RunReportForm> = ({ closePanel }) => {
 
       runReport(reportRequest)
         .then(() => {
+          if (!mounted.current) return;
           // delayed handling because runReport returns before new reports is accessible via GET
-          setTimeout(() => {
+          closeTimer.current = setTimeout(() => {
             showSnackbar({
               kind: 'success',
               title: t('reportRanSuccessfully', 'Report ran successfully'),
             });
-            closePanel();
+            submitting.current = false;
             setIsSubmitting(false);
+            closePanel();
           }, 500);
         })
         .catch((error) => {
-          console.error(error);
+          submitting.current = false;
+          if (!mounted.current) return;
           showSnackbar({
             kind: 'error',
             title: t('errorRunningReport', 'Error running report'),
@@ -125,7 +124,7 @@ const RunReportForm: React.FC<RunReportForm> = ({ closePanel }) => {
           setIsSubmitting(false);
         });
     },
-    [closePanel, reportParameters, reportUuid, renderModeUuid, t],
+    [closePanel, isFormValid, reportParameters, reportUuid, renderModeUuid, t],
   );
 
   return (
@@ -136,9 +135,8 @@ const RunReportForm: React.FC<RunReportForm> = ({ closePanel }) => {
           labelText={t('selectReportLabel', 'Report')}
           onChange={(e) => {
             setReportUuid(e.target.value);
-            setRenderModeUuid('');
-            setCurrentReport(reportDefinitions.find((reportDefinition) => reportDefinition.uuid === e.target.value));
-            setReportParameters({});
+            setRenderModeUuid(null);
+            setReportParameters(e.target.value === PROVIDER_FINANCIAL_STATEMENT_UUID ? { currency: 'PKR' } : {});
           }}
           value={reportUuid}
         >
@@ -188,7 +186,7 @@ const RunReportForm: React.FC<RunReportForm> = ({ closePanel }) => {
       </Stack>
       <div className={styles.buttonsDiv}>
         <ButtonSet className={classNames({ [styles.tablet]: isTablet, [styles.desktop]: !isTablet })}>
-          <Button onClick={closeOverlay} kind="secondary" size="xl" className={styles.reportButton}>
+          <Button onClick={closePanel} kind="secondary" size="xl" className={styles.reportButton}>
             {t('cancel', 'Cancel')}
           </Button>
           <Button

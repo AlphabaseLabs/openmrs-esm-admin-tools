@@ -2,8 +2,7 @@ import ProviderShareStatusParameter, { isShareStatusParameter } from './provider
 import React from 'react';
 import ProviderReportParameter, { isProviderParameter } from './provider-report-parameter.component';
 import { useTranslation } from 'react-i18next';
-import { TextInput, Select, SelectItem } from '@carbon/react';
-import { OpenmrsDatePicker } from '@openmrs/esm-framework';
+import { DatePicker, DatePickerInput, TextInput, Select, SelectItem } from '@carbon/react';
 import styles from './report-parameter.scss';
 import ConceptSearchInput from './concept-search/concept-search-input.component';
 
@@ -33,7 +32,7 @@ type ReportParameterProps = ReportParameterPropsBase &
       }
     | {
         handleOnChange: undefined;
-        handleOnDateChange: (fieldName: string, dateValue: Date) => void;
+        handleOnDateChange: (fieldName: string, dateValue: Date | null) => void;
       }
   );
 
@@ -46,12 +45,12 @@ const ReportParameter: React.FC<ReportParameterProps> = ({
 }) => {
   const { t } = useTranslation();
 
-  const handleConceptSelect = (conceptUuid: string, conceptDisplay: string) => {
+  const handleParameterSelect = (value: string) => {
     if (handleOnChange) {
       const syntheticEvent = {
         target: {
           name: parameter.name,
-          value: conceptUuid,
+          value,
         },
       } as React.ChangeEvent<HTMLInputElement>;
       handleOnChange(syntheticEvent);
@@ -64,7 +63,7 @@ const ReportParameter: React.FC<ReportParameterProps> = ({
         name={parameter.name}
         label={parameter.label}
         value={reportParameters[parameter.name]}
-        onChange={(value) => handleConceptSelect(value, '')}
+        onChange={handleParameterSelect}
       />
     );
   }
@@ -75,7 +74,7 @@ const ReportParameter: React.FC<ReportParameterProps> = ({
         name={parameter.name}
         label={parameter.label}
         value={reportParameters[parameter.name]}
-        onChange={(uuid) => handleConceptSelect(uuid, '')}
+        onChange={handleParameterSelect}
       />
     );
   }
@@ -83,18 +82,14 @@ const ReportParameter: React.FC<ReportParameterProps> = ({
   switch (parameter.type) {
     case 'java.util.Date':
       return (
-        <div>
-          <OpenmrsDatePicker
-            id={parameter.name}
-            labelText={parameter.label}
-            onChange={(date) => {
-              if (handleOnDateChange) {
-                handleOnDateChange(parameter.name, date);
-              }
-            }}
-            value={reportParameters[parameter.name]}
-          />
-        </div>
+        <DatePicker
+          datePickerType="single"
+          dateFormat="d/m/Y"
+          value={reportParameters[parameter.name] ?? ''}
+          onChange={([date]) => handleOnDateChange?.(parameter.name, date ?? null)}
+        >
+          <DatePickerInput id={parameter.name} labelText={parameter.label} placeholder="dd/mm/yyyy" />
+        </DatePicker>
       );
     case 'java.lang.String':
     case 'java.lang.Integer':
@@ -134,7 +129,7 @@ const ReportParameter: React.FC<ReportParameterProps> = ({
           parameterName={parameter.name}
           labelText={parameter.label}
           placeholder={t('searchFieldPlaceholder', 'Search for a concept')}
-          onConceptSelect={handleConceptSelect}
+          onConceptSelect={handleParameterSelect}
         />
       );
     default:

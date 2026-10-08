@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { PageHeader, PatientDocumentsPictogram } from '@openmrs/esm-framework';
+import { PageHeader, PatientsPictogram } from '@openmrs/esm-framework';
 import VisitSummaryConfig from './config/visit-summary-config.component';
 import styles from './root.scss';
 
@@ -10,7 +10,7 @@ const Root: React.FC = () => {
     <main className={`omrs-main-content ${styles.main}`}>
       <PageHeader
         className={styles.header}
-        illustration={<PatientDocumentsPictogram />}
+        illustration={<PatientsPictogram />}
         title={t('moduleTitle', 'Visit Summary Configuration')}
       />
       <VisitSummaryConfig />

@@ -21,13 +21,19 @@ const ProviderShareStatusParameter: React.FC<{
       onChange={(event) => onChange(event.target.value)}
       helperText={
         value === 'PENDING'
-          ? t('pendingStatementHelp', 'Includes older unpaid balances at the end date.')
+          ? t(
+              'pendingStatementHelp',
+              'Shows each patient payment that released a share in the selected period and still has an unpaid amount at its end.',
+            )
           : value === 'PAID'
             ? t('paidStatementHelp', 'Includes provider payments and reversals within the selected period.')
-            : undefined
+            : value === 'ALL'
+              ? t('allStatementHelp', 'Includes pending share releases and provider payments from the selected period.')
+              : undefined
       }
     >
-      <SelectItem value="" text={t('selectShareStatus', 'Select Paid or Pending')} disabled hidden />
+      <SelectItem value="" text={t('selectShareStatus', 'Select All, Pending or Paid')} disabled hidden />
+      <SelectItem value="ALL" text={t('all', 'All')} />
       <SelectItem value="PENDING" text={t('pending', 'Pending')} />
       <SelectItem value="PAID" text={t('paid', 'Paid')} />
     </Select>

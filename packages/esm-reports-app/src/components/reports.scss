@@ -8,11 +8,11 @@
 }
 
 .failedIcon {
-  color: red;
+  color: themes.$support-error;
 }
 
 .successIcon {
-  color: green;
+  color: themes.$support-success;
 }
 
 .runningIcon {
@@ -44,10 +44,14 @@
 }
 
 .actionsRow {
-  text-align: right;
   margin-bottom: layout.$spacing-03;
 
   .mainActionButtonsDiv {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: layout.$spacing-02;
     height: auto;
   }
 
@@ -56,29 +60,8 @@
   }
 }
 
-.actionsContainer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-  justify-content: flex-start;
-}
-
 .actionButtonsWrapperDiv {
   flex-shrink: 0;
-}
-
-.mainActionButtonsDiv {
-  text-align: right;
-  height: 48px;
-}
-
-.downloadReportsVisible {
-  display: inline-block;
-}
-
-.downloadReportsHidden {
-  display: none;
 }
 
 .rowCellEven {
@@ -161,4 +144,103 @@
   text-align: center;
   padding: layout.$spacing-07;
   color: var(--cds-text-secondary);
+}
+
+.requestsTableContainer {
+  overflow-x: auto;
+}
+
+.requestsTable {
+  min-width: 68rem;
+
+  td {
+    padding-top: layout.$spacing-04;
+    padding-bottom: layout.$spacing-04;
+    vertical-align: middle;
+  }
+
+  .reportNameColumn {
+    min-width: 12rem;
+    font-weight: 600;
+  }
+
+  .statusColumn {
+    min-width: 10rem;
+  }
+
+  .requestedByColumn {
+    min-width: 8rem;
+    overflow-wrap: anywhere;
+  }
+
+  .requestedOnColumn {
+    white-space: nowrap;
+  }
+
+  .outputFormatColumn {
+    min-width: 6rem;
+  }
+
+  .parametersColumn {
+    width: 32%;
+    min-width: 20rem;
+  }
+
+  .actionsColumn {
+    min-width: 10rem;
+  }
+}
+
+.requestParameters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: layout.$spacing-02 layout.$spacing-05;
+  margin: 0;
+
+  > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: layout.$spacing-02;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  > div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  dt {
+    color: themes.$text-secondary;
+  }
+
+  dd {
+    margin: 0;
+  }
+}
+
+.requestStatus {
+  display: flex;
+  align-items: center;
+  gap: layout.$spacing-02;
+
+  .statusIcon {
+    flex-shrink: 0;
+    margin: 0;
+  }
+}
+
+.requestTime {
+  display: block;
+  color: themes.$text-secondary;
+  margin-top: layout.$spacing-02;
+}
+
+.reportActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+
+  .actionButtonIcon {
+    margin: 0;
+  }
 }
