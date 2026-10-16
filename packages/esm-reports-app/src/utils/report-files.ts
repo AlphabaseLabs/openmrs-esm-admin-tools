@@ -44,7 +44,14 @@ export async function printReportFile(
     if (String.fromCharCode(...bytes.subarray(0, 5)) !== '%PDF-') {
       throw new Error(messages.invalidPdf);
     }
-    url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    // The PDF viewer prints its own document, not the titled popup. Give the
+    // PDF the download filename so Save as PDF does not use the blob URL's UUID.
+    const { PDFDocument } = await import('pdf-lib');
+    const document = await PDFDocument.load(bytes, { updateMetadata: false });
+    document.setTitle(file.filename, { showInWindowTitleBar: true });
+    const printBytes = await document.save({ updateFieldAppearances: false });
+    if (preview.closed) return;
+    url = URL.createObjectURL(new Blob([new Uint8Array(printBytes)], { type: 'application/pdf' }));
     preview.addEventListener('pagehide', () => URL.revokeObjectURL(url), { once: true });
     preview.document.title = file.filename;
     const frame = preview.document.createElement('iframe');
